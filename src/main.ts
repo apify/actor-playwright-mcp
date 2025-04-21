@@ -3,9 +3,7 @@
  * This file needs to be named `main.ts` to be recognized by the Apify platform.
  */
 
-import assert from 'node:assert';
 import * as fs from 'node:fs';
-import http from 'node:http';
 import * as os from 'node:os';
 import path from 'node:path';
 
@@ -13,9 +11,13 @@ import type { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import { createServer } from '@playwright/mcp';
 import { Actor } from 'apify';
+import type { Request, Response } from 'express';
+import express from 'express';
 import type { LaunchOptions } from 'playwright';
 
 import log from '@apify/log';
+
+const HEADER_READINESS_PROBE = 'X-Readiness-Probe';
 
 export type ToolCapability = 'core' | 'tabs' | 'pdf' | 'history' | 'wait' | 'files' | 'install';
 
@@ -104,15 +106,11 @@ if (STANDBY_MODE) {
     } as CreateServerOptions) as Server;
 
     setupExitWatchdog(server);
-    // const app = createExpressApp(HOST);
     log.info('Actor is running in the STANDBY mode.');
-    startSSEServer(PORT, server).catch((e) => {
-        log.error(`Failed to start SSE server: ${e}`);
+    startExpressServer(PORT, server).catch((e) => {
+        log.error(`Failed to start Express server: ${e}`);
         process.exit(1);
     });
-    // app.listen(PORT, () => {
-    //     log.info(`The Actor web server is listening for user requests at ${HOST}`);
-    // });
 } else {
     const msg = `Actor is not designed to run in the NORMAL model (use this mode only for debugging purposes)`;
     log.error(msg);
@@ -147,57 +145,114 @@ async function createUserDataDir(browserNameDir: 'chromium' | 'firefox' | 'webki
     return result;
 }
 
-async function startSSEServer(port: number, server: Server) {
+function getHelpMessage(host: string): string {
+    return `Connect to ${host}/sse to establish a connection.`;
+}
+
+function getActorRunData() {
+    return {
+        actorId: Actor.getEnv().actorId,
+        actorRunId: Actor.getEnv().actorRunId,
+        startedAt: new Date().toISOString(),
+    };
+}
+
+async function startExpressServer(port: number, server: Server) {
+    const app = express();
+    let transportSSE: SSEServerTransport;
     const sessions = new Map<string, SSEServerTransport>();
-    const httpServer = http.createServer(async (req, res) => {
-        if (req.method === 'POST') {
+
+    function respondWithError(res: Response, error: unknown, logMessage: string, statusCode = 500) {
+        log.error(`${logMessage}: ${error}`);
+        if (!res.headersSent) {
+            res.status(statusCode).json({
+                jsonrpc: '2.0',
+                error: {
+                    code: statusCode === 500 ? -32603 : -32000,
+                    message: statusCode === 500 ? 'Internal server error' : 'Bad Request',
+                },
+                id: null,
+            });
+        }
+    }
+
+    app.get('/', async (req: Request, res: Response) => {
+        if (req.headers && req.get(HEADER_READINESS_PROBE) !== undefined) {
+            log.debug('Received readiness probe');
+            res.status(200).json({ message: 'Server is ready' }).end();
+            return;
+        }
+        try {
+            log.info('Received GET message at root');
+            res.setHeader('Content-Type', 'text/event-stream');
+            res.setHeader('Cache-Control', 'no-cache');
+            res.setHeader('Connection', 'keep-alive');
+            res.status(200).json({
+                message: `Actor is using Model Context Protocol. ${getHelpMessage(HOST)}`,
+                data: getActorRunData(),
+            }).end();
+        } catch (error) {
+            respondWithError(res, error, 'Error in GET /');
+        }
+    });
+
+    app.get('/sse', async (_req: Request, res: Response) => {
+        try {
+            log.info('Received GET message at /sse');
+            transportSSE = new SSEServerTransport('/message', res);
+            sessions.set(transportSSE.sessionId, transportSSE);
+            res.on('close', () => {
+                sessions.delete(transportSSE.sessionId);
+                server.close().catch((e) => log.error(e));
+            });
+            await server.connect(transportSSE);
+        } catch (error) {
+            respondWithError(res, error, 'Error in GET /sse');
+        }
+    });
+
+    app.post('/message', async (req: Request, res: Response) => {
+        try {
+            log.info('Received POST message at /message');
             const { searchParams } = new URL(`http://localhost${req.url}`);
             const sessionId = searchParams.get('sessionId');
             if (!sessionId) {
-                res.statusCode = 400;
-                res.end('Missing sessionId');
+                res.status(400).json({
+                    jsonrpc: '2.0',
+                    error: {
+                        code: -32000,
+                        message: 'Bad Request: Missing sessionId',
+                    },
+                    id: null,
+                });
                 return;
             }
             const transport = sessions.get(sessionId);
             if (!transport) {
-                res.statusCode = 404;
-                res.end('Session not found');
+                res.status(404).json({
+                    jsonrpc: '2.0',
+                    error: {
+                        code: -32000,
+                        message: 'Bad Request: Session not found',
+                    },
+                    id: null,
+                });
                 return;
             }
-
             await transport.handlePostMessage(req, res);
-        } else if (req.method === 'GET') {
-            const transport = new SSEServerTransport('/sse', res);
-            sessions.set(transport.sessionId, transport);
-            res.on('close', () => {
-                sessions.delete(transport.sessionId);
-                server.close().catch((e) => log.error(e));
-            });
-            await server.connect(transport);
-        } else {
-            res.statusCode = 405;
-            res.end('Method not allowed');
+        } catch (error) {
+            respondWithError(res, error, 'Error in POST /message');
         }
     });
 
-    httpServer.listen(port, () => {
-        const address = httpServer.address();
-        assert(address, 'Could not bind server socket');
-        let url: string;
-        if (typeof address === 'string') {
-            url = address;
-        } else {
-            const resolvedPort = address.port;
-            let resolvedHost = address.family === 'IPv4' ? address.address : `[${address.address}]`;
-            if (resolvedHost === '0.0.0.0' || resolvedHost === '[::]') resolvedHost = 'localhost';
-            url = `http://${resolvedHost}:${resolvedPort}`;
-        }
+    app.listen(port, () => {
+        const url = Actor.isAtHome() ? `${HOST}:${port}` : `http://localhost:${port}`;
         log.info(`Listening on ${url}`);
         log.info('Put this in your client config:');
         log.info(JSON.stringify({
             mcpServers: {
                 playwright: {
-                    url: Actor.isAtHome() ? `${HOST}/sse` : `${url}/sse`,
+                    url,
                 },
             },
         }, undefined, 2));
