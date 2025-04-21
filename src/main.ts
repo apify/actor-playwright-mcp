@@ -3,6 +3,8 @@
  * This file needs to be named `main.ts` to be recognized by the Apify platform.
  */
 
+// TODO: We need to install browser in dockerfile
+
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import path from 'node:path';
