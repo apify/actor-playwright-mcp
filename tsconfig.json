@@ -1,0 +1,7 @@
+{
+    "extends": "@apify/tsconfig",
+    "compilerOptions": {
+        "module": "ES2022",
+        "skipLibCheck": true,
+    },
+}
