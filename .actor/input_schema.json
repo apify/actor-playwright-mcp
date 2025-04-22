@@ -1,0 +1,41 @@
+{
+    "title": "Playwright MCP Server",
+    "type": "object",
+    "schemaVersion": 1,
+    "properties": {
+        "browser": {
+            "title": "Browser",
+            "type": "string",
+            "description": "Browser or chrome channel to use",
+            "editor": "select",
+            "enum": ["chrome", "firefox", "webkit", "msedge"],
+            "default": "chrome",
+            "prefill": "chrome"
+        },
+        "capabilities": {
+            "title": "Capabilities",
+            "type": "array",
+            "description": "List of capabilities to enable",
+            "editor": "stringList",
+            "prefill": ["tabs", "pdf", "history", "wait", "files", "install"]
+        },
+        "cdpEndpoint": {
+            "title": "CDP Endpoint",
+            "type": "string",
+            "description": "CDP endpoint to connect to",
+            "editor": "textfield"
+        },
+        "headless": {
+            "title": "Headless Mode",
+            "type": "boolean",
+            "description": "Run browser in headless mode (default: false)",
+            "default": false
+        },
+        "vision": {
+            "title": "Vision Mode",
+            "type": "boolean",
+            "description": "Run server that uses screenshots (Aria snapshots are used by default)",
+            "default": false
+        }
+    }
+}
