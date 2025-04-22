@@ -159,6 +159,48 @@ function getActorRunData() {
     };
 }
 
+/**
+ * Processes an SSE message to detect and save image content to KV store
+ * @param message - The message to process
+ * @param sessionId - The session ID associated with the message
+ */
+async function saveImagesFromMessage(message: any, sessionId: string): Promise<void> {
+    try {
+        // Parse the message if it's a string
+        const messageObj = typeof message === 'string' ? JSON.parse(message) : message;
+
+        // Check if the message contains image content
+        const hasImageContent = messageObj?.result?.content?.some(
+            (item: any) => item?.type === 'image' && item?.data
+        );
+        const kv = await Actor.openKeyValueStore();
+        if (hasImageContent) {
+            log.info('Message contains image content. Saving to Key-Value store...');
+            // Extract and save each image in the message
+            for (const [index, item] of messageObj.result.content.entries()) {
+                if (item.type === 'image' && item.data) {
+                    try {
+                        // Base64 data might start with a data URL prefix, extract just the base64 part
+                        let base64Data = item.data;
+                        if (base64Data.includes(';base64,')) {
+                            base64Data = base64Data.split(';base64,')[1];
+                        }
+                        // Create a Buffer from the base64 data
+                        const imageBuffer = Buffer.from(base64Data, 'base64');
+                        const imageKey = `image-${sessionId}-${Date.now()}-${index}`;
+                        await kv.setValue(imageKey, imageBuffer, { contentType: 'image/jpeg' });
+                        log.info(`Saved image to Key-Value store with key: ${imageKey}`);
+                    } catch (imageError) {
+                        log.error(`Failed to process image data: ${imageError}`);
+                    }
+                }
+            }
+        }
+    } catch (error) {
+        log.error(`Error processing message content: ${error}`);
+    }
+}
+
 async function startExpressServer(port: number, server: Server) {
     const app = express();
     let transportSSE: SSEServerTransport;
@@ -202,6 +244,16 @@ async function startExpressServer(port: number, server: Server) {
         try {
             log.info('Received GET message at /sse');
             transportSSE = new SSEServerTransport('/message', res);
+
+            const originalSend = transportSSE.send.bind(transportSSE);
+            transportSSE.send = async (message) => {
+                log.info(`Sent SSE message to session ${transportSSE.sessionId}`);
+                await Actor.pushData({ message });
+                // Process message and extract/save any image content
+                await saveImagesFromMessage(message, transportSSE.sessionId);
+                return originalSend(message);
+            };
+
             sessions.set(transportSSE.sessionId, transportSSE);
             res.on('close', () => {
                 sessions.delete(transportSSE.sessionId);
@@ -241,6 +293,7 @@ async function startExpressServer(port: number, server: Server) {
                 });
                 return;
             }
+            log.info(`Received POST message for sessionId: ${sessionId}`);
             await transport.handlePostMessage(req, res);
         } catch (error) {
             respondWithError(res, error, 'Error in POST /message');
@@ -248,7 +301,7 @@ async function startExpressServer(port: number, server: Server) {
     });
 
     app.listen(port, () => {
-        const url = Actor.isAtHome() ? `${HOST}:${port}` : `http://localhost:${port}`;
+        const url = Actor.isAtHome() ? `${HOST}` : `http://localhost:${port}`;
         log.info(`Listening on ${url}`);
         log.info('Put this in your client config:');
         log.info(JSON.stringify({
