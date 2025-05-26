@@ -12,7 +12,7 @@
             "default": "chrome",
             "prefill": "chrome"
         },
-        "capabilities": {
+        "caps": {
             "title": "Capabilities",
             "type": "array",
             "description": "List of capabilities to enable",

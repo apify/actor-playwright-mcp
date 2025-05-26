@@ -41,6 +41,9 @@ if (STANDBY_MODE) {
         const proxy = await Actor.createProxyConfiguration(input.proxyConfiguration);
         input.proxyServer = await proxy?.newUrl();
     }
+    // cliOptions expects a string, but input.caps is an array
+    const cliOptions: CLIOptions = input as CLIOptions;
+    cliOptions.caps = Array.isArray(input.caps) ? input.caps.join(',') : input.caps;
     const config = await configFromCLIOptions(input as CLIOptions);
     const connectionList: Connection[] = [];
     setupExitWatchdog(connectionList);

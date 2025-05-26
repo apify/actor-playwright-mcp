@@ -115,7 +115,7 @@ export async function configFromCLIOptions(cliOptions: CLIOptions): Promise<Conf
             browserName,
             launchOptions,
         },
-        capabilities: cliOptions.caps?.split(',').map((c: string) => c.trim() as ToolCapability),
+        capabilities: cliOptions.caps ? cliOptions.caps.split(',').map((c: string) => c.trim() as ToolCapability) : [],
         vision: !!cliOptions.vision,
         outputDir: path.join(os.tmpdir(), 'playwright-mcp-output', sanitizeForFilePath(new Date().toISOString())),
     };

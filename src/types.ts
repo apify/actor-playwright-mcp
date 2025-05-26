@@ -7,7 +7,7 @@ export type Input = {
         | 'chrome-beta' | 'chrome-canary' | 'chrome-dev'
         | 'msedge-beta' | 'msedge-canary' | 'msedge-dev'
         | 'chromium';
-    capabilities?: ToolCapability[];
+    caps?: ToolCapability[];
     proxyConfiguration: ProxyConfigurationOptions;
     proxyServer?: string;
     headless?: boolean;
