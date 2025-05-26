@@ -43,7 +43,7 @@ if (STANDBY_MODE) {
     }
     // cliOptions expects a string, but input.caps is an array
     const cliOptions: CLIOptions = {
-        ...input,
+        ...input as CLIOptions,
         caps: Array.isArray(input.caps) ? input.caps.join(',') : input.caps,
     };
     const config = await configFromCLIOptions(cliOptions);
