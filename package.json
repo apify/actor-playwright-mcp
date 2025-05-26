@@ -32,7 +32,7 @@
   "dependencies": {
     "@apify/log": "^2.5.16",
     "@modelcontextprotocol/sdk": "^1.10.1",
-    "@playwright/mcp": "^0.0.13",
+    "@playwright/mcp": "^0.0.26",
     "apify": "^3.4.0",
     "apify-client": "^2.12.1",
     "express": "^4.21.2"
