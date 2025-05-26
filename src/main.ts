@@ -42,9 +42,11 @@ if (STANDBY_MODE) {
         input.proxyServer = await proxy?.newUrl();
     }
     // cliOptions expects a string, but input.caps is an array
-    const cliOptions: CLIOptions = input as CLIOptions;
-    cliOptions.caps = Array.isArray(input.caps) ? input.caps.join(',') : input.caps;
-    const config = await configFromCLIOptions(input as CLIOptions);
+    const cliOptions: CLIOptions = {
+        ...input,
+        caps: Array.isArray(input.caps) ? input.caps.join(',') : input.caps,
+    };
+    const config = await configFromCLIOptions(cliOptions);
     const connectionList: Connection[] = [];
     setupExitWatchdog(connectionList);
 
