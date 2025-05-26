@@ -9,8 +9,10 @@ export type Input = {
         | 'chromium';
     capabilities?: ToolCapability[];
     proxyConfiguration: ProxyConfigurationOptions;
+    proxyServer?: string;
     headless?: boolean;
     vision?: boolean;
+
 };
 
 // Define a type for image content items

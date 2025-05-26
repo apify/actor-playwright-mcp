@@ -37,10 +37,11 @@ const input = (await Actor.getInput<Partial<Input>>()) ?? ({} as Input);
 log.info(`Loaded input: ${JSON.stringify(input)} `);
 
 if (STANDBY_MODE) {
+    if (input.proxyConfiguration) {
+        const proxy = await Actor.createProxyConfiguration(input.proxyConfiguration);
+        input.proxyServer = await proxy?.newUrl();
+    }
     const config = await configFromCLIOptions(input as CLIOptions);
-
-    const proxy = await Actor.createProxyConfiguration(input.proxyConfiguration);
-
     const connectionList: Connection[] = [];
     setupExitWatchdog(connectionList);
 

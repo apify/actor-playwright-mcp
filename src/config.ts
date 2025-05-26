@@ -56,6 +56,23 @@ function sanitizeForFilePath(s: string) {
     return `${sanitize(s.substring(0, separator))}.${sanitize(s.substring(separator + 1))}`;
 }
 
+function parseProxyUrl(proxyUrl: string): { server: string; username?: string; password?: string } {
+    try {
+        const url = new URL(proxyUrl);
+        const auth = url.username ? {
+            username: decodeURIComponent(url.username),
+            password: decodeURIComponent(url.password),
+        } : undefined;
+        return {
+            server: `${url.protocol}//${url.host}`,
+            ...auth,
+        };
+    } catch {
+        // If URL parsing fails, return the original URL as server
+        return { server: proxyUrl };
+    }
+}
+
 export async function configFromCLIOptions(cliOptions: CLIOptions): Promise<Config> {
     let browserName: 'chromium' | 'firefox' | 'webkit';
     let channel: string | undefined;
@@ -90,9 +107,7 @@ export async function configFromCLIOptions(cliOptions: CLIOptions): Promise<Conf
     };
 
     if (cliOptions.proxyServer) {
-        launchOptions.proxy = {
-            server: cliOptions.proxyServer,
-        };
+        launchOptions.proxy = parseProxyUrl(cliOptions.proxyServer);
     }
 
     return {
