@@ -38,6 +38,9 @@ log.info(`Loaded input: ${JSON.stringify(input)} `);
 
 if (STANDBY_MODE) {
     const config = await configFromCLIOptions(input as CLIOptions);
+
+    const proxy = await Actor.createProxyConfiguration(input.proxyConfiguration);
+
     const connectionList: Connection[] = [];
     setupExitWatchdog(connectionList);
 
@@ -92,7 +95,7 @@ async function saveImagesFromMessage(message: unknown, sessionId: string): Promi
         );
         const kv = await Actor.openKeyValueStore();
         if (hasImageContent) {
-            log.info('Message contains image content. Saving to Key-Value store...');
+            log.info('Message contains image content. Saving to key-value store...');
             // Extract and save each image in the message
             for (const [index, item] of messageObj.result.content.entries()) {
                 if (item.type === 'image' && item.data) {
@@ -106,7 +109,7 @@ async function saveImagesFromMessage(message: unknown, sessionId: string): Promi
                         const imageBuffer = Buffer.from(base64Data, 'base64');
                         const imageKey = `image-${sessionId}-${Date.now()}-${index}`;
                         await kv.setValue(imageKey, imageBuffer, { contentType: 'image/jpeg' });
-                        log.info(`Saved image to key-Value store with key: ${imageKey}`);
+                        log.info(`Saved image to key-value store with key: ${imageKey}`);
                     } catch (imageError) {
                         log.error(`Failed to process image data: ${imageError}`);
                     }
@@ -179,7 +182,6 @@ async function startExpressServer(port: number, config: Config, connectionList: 
                 sessions.delete(transportSSE.sessionId);
                 connection.close().catch((e) => log.error(`Error closing connection: ${e}`));
             });
-            await connection.connect(transportSSE);
         } catch (error) {
             respondWithError(res, error, 'Error in GET /sse');
         }
