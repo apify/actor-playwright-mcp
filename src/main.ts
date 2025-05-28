@@ -50,7 +50,7 @@ if (STANDBY_MODE) {
     const connectionList: Connection[] = [];
     setupExitWatchdog(connectionList);
 
-    log.info('Actor is running in the STANDBY mode.');
+    log.info(`Actor is running in the STANDBY mode with config ${JSON.stringify(config)}`);
     startExpressServer(PORT, config, connectionList).catch((e) => {
         log.error(`Failed to start Express server: ${e}`);
         process.exit(1);
@@ -235,7 +235,7 @@ async function startExpressServer(port: number, config: Config, connectionList: 
         log.info(JSON.stringify({
             mcpServers: {
                 playwright: {
-                    url,
+                    url:`${url}/sse`
                 },
             },
         }, undefined, 2));

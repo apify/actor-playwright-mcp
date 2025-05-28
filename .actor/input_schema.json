@@ -17,7 +17,7 @@
             "type": "array",
             "description": "List of capabilities to enable",
             "editor": "stringList",
-            "prefill": ["tabs", "pdf", "history", "wait", "files", "install"]
+            "prefill": ["core", "tabs", "pdf", "history", "wait", "files", "install", "testing"]
         },
         "headless": {
             "title": "Headless mode",

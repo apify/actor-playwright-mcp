@@ -106,6 +106,9 @@ export async function configFromCLIOptions(cliOptions: CLIOptions): Promise<Conf
         headless: cliOptions.headless,
     };
 
+    // we are running in a container, so we disable the sandbox
+    launchOptions.chromiumSandbox = false;
+
     if (cliOptions.proxyServer) {
         launchOptions.proxy = parseProxyUrl(cliOptions.proxyServer);
     }
