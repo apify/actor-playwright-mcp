@@ -5,21 +5,37 @@
 
 // TODO: We need to install browser in dockerfile
 
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import path from 'node:path';
+
+import type { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
-import type { Connection } from '@playwright/mcp';
-import { createConnection } from '@playwright/mcp';
-import type { Config } from '@playwright/mcp/config.js';
+import { createServer } from '@playwright/mcp';
 import { Actor } from 'apify';
 import type { Request, Response } from 'express';
 import express from 'express';
+import type { LaunchOptions } from 'playwright';
 
 import log from '@apify/log';
 
-import type { CLIOptions } from './config.js';
-import { configFromCLIOptions } from './config.js';
-import type { ImageContentItem, Input } from './types.js';
-
 const HEADER_READINESS_PROBE = 'X-Readiness-Probe';
+
+export type ToolCapability = 'core' | 'tabs' | 'pdf' | 'history' | 'wait' | 'files' | 'install';
+
+export type Input = {
+    browser:| 'chrome' | 'firefox' | 'webkit' | 'msedge'
+        | 'chrome-beta' | 'chrome-canary' | 'chrome-dev'
+        | 'msedge-beta' | 'msedge-canary' | 'msedge-dev'
+        | 'chromium';
+    capabilities?: ToolCapability[];
+    cdpEndpoint?: string;
+    executablePath?: string;
+    headless?: boolean;
+    port?: number;
+    userDataDir?: string;
+    vision?: boolean;
+};
 
 const STANDBY_MODE = Actor.getEnv().metaOrigin === 'STANDBY';
 
@@ -36,22 +52,64 @@ if (!process.env.APIFY_TOKEN) {
 const input = (await Actor.getInput<Partial<Input>>()) ?? ({} as Input);
 log.info(`Loaded input: ${JSON.stringify(input)} `);
 
-if (STANDBY_MODE) {
-    if (input.proxyConfiguration) {
-        const proxy = await Actor.createProxyConfiguration(input.proxyConfiguration);
-        input.proxyServer = await proxy?.newUrl();
-    }
-    // cliOptions expects a string, but input.caps is an array
-    const cliOptions: CLIOptions = {
-        ...input as CLIOptions,
-        caps: Array.isArray(input.caps) ? input.caps.join(',') : input.caps,
-    };
-    const config = await configFromCLIOptions(cliOptions);
-    const connectionList: Connection[] = [];
-    setupExitWatchdog(connectionList);
+let browserName: 'chromium' | 'firefox' | 'webkit';
+let channel: string | undefined;
 
-    log.info(`Actor is running in the STANDBY mode with config ${JSON.stringify(config)}`);
-    startExpressServer(PORT, config, connectionList).catch((e) => {
+switch (input.browser) {
+    case 'chrome':
+    case 'chrome-beta':
+    case 'chrome-canary':
+    case 'chrome-dev':
+    case 'msedge':
+    case 'msedge-beta':
+    case 'msedge-canary':
+    case 'msedge-dev':
+        browserName = 'chromium';
+        channel = input.browser;
+        break;
+    case 'chromium':
+        browserName = 'chromium';
+        break;
+    case 'firefox':
+        browserName = 'firefox';
+        break;
+    case 'webkit':
+        browserName = 'webkit';
+        break;
+    default:
+        browserName = 'chromium';
+        channel = 'chrome';
+}
+
+if (STANDBY_MODE) {
+    const launchOptions: LaunchOptions = {
+        headless: (input.headless ?? (os.platform() === 'linux' && !process.env.DISPLAY)),
+        channel,
+        executablePath: input.executablePath,
+    };
+    input.userDataDir = input.userDataDir ?? await createUserDataDir(browserName);
+
+    type CreateServerOptions = {
+        browserName: 'chromium' | 'firefox' | 'webkit';
+        userDataDir: string;
+        launchOptions: LaunchOptions;
+        vision: boolean;
+        cdpEndpoint?: string;
+        capabilities?: ToolCapability[];
+    };
+
+    const server = createServer({
+        browserName,
+        userDataDir: input.userDataDir,
+        launchOptions,
+        vision: !!input.vision,
+        cdpEndpoint: input.cdpEndpoint,
+        capabilities: input.capabilities,
+    } as CreateServerOptions) as Server;
+
+    setupExitWatchdog(server);
+    log.info('Actor is running in the STANDBY mode.');
+    startExpressServer(PORT, server).catch((e) => {
         log.error(`Failed to start Express server: ${e}`);
         process.exit(1);
     });
@@ -61,16 +119,32 @@ if (STANDBY_MODE) {
     await Actor.fail(msg);
 }
 
-function setupExitWatchdog(connectionList: Connection[]) {
+function setupExitWatchdog(server: Server) {
     const handleExit = async () => {
         setTimeout(() => process.exit(0), 15000);
-        for (const connection of connectionList) await connection.close();
+        await server.close();
         process.exit(0);
     };
 
     process.stdin.on('close', handleExit);
     process.on('SIGINT', handleExit);
     process.on('SIGTERM', handleExit);
+}
+
+async function createUserDataDir(browserNameDir: 'chromium' | 'firefox' | 'webkit') {
+    let cacheDirectory: string;
+    if (process.platform === 'linux') {
+        cacheDirectory = process.env.XDG_CACHE_HOME || path.join(os.homedir(), '.cache');
+    } else if (process.platform === 'darwin') {
+        cacheDirectory = path.join(os.homedir(), 'Library', 'Caches');
+    } else if (process.platform === 'win32') {
+        cacheDirectory = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
+    } else {
+        throw new Error(`Unsupported platform: ${process.platform}`);
+    }
+    const result = path.join(cacheDirectory, 'ms-playwright', `mcp-${browserNameDir}-profile`);
+    await fs.promises.mkdir(result, { recursive: true });
+    return result;
 }
 
 function getHelpMessage(host: string): string {
@@ -90,18 +164,18 @@ function getActorRunData() {
  * @param message - The message to process
  * @param sessionId - The session ID associated with the message
  */
-async function saveImagesFromMessage(message: unknown, sessionId: string): Promise<void> {
+async function saveImagesFromMessage(message: any, sessionId: string): Promise<void> {
     try {
         // Parse the message if it's a string
         const messageObj = typeof message === 'string' ? JSON.parse(message) : message;
 
         // Check if the message contains image content
         const hasImageContent = messageObj?.result?.content?.some(
-            (item: ImageContentItem) => item?.type === 'image' && item?.data,
+            (item: any) => item?.type === 'image' && item?.data
         );
         const kv = await Actor.openKeyValueStore();
         if (hasImageContent) {
-            log.info('Message contains image content. Saving to key-value store...');
+            log.info('Message contains image content. Saving to Key-Value store...');
             // Extract and save each image in the message
             for (const [index, item] of messageObj.result.content.entries()) {
                 if (item.type === 'image' && item.data) {
@@ -115,7 +189,7 @@ async function saveImagesFromMessage(message: unknown, sessionId: string): Promi
                         const imageBuffer = Buffer.from(base64Data, 'base64');
                         const imageKey = `image-${sessionId}-${Date.now()}-${index}`;
                         await kv.setValue(imageKey, imageBuffer, { contentType: 'image/jpeg' });
-                        log.info(`Saved image to key-value store with key: ${imageKey}`);
+                        log.info(`Saved image to Key-Value store with key: ${imageKey}`);
                     } catch (imageError) {
                         log.error(`Failed to process image data: ${imageError}`);
                     }
@@ -127,7 +201,7 @@ async function saveImagesFromMessage(message: unknown, sessionId: string): Promi
     }
 }
 
-async function startExpressServer(port: number, config: Config, connectionList: Connection[]) {
+async function startExpressServer(port: number, server: Server) {
     const app = express();
     let transportSSE: SSEServerTransport;
     const sessions = new Map<string, SSEServerTransport>();
@@ -170,10 +244,6 @@ async function startExpressServer(port: number, config: Config, connectionList: 
         try {
             log.info('Received GET message at /sse');
             transportSSE = new SSEServerTransport('/message', res);
-            sessions.set(transportSSE.sessionId, transportSSE);
-            const connection = await createConnection(config);
-            await connection.connect(transportSSE);
-            connectionList.push(connection);
 
             const originalSend = transportSSE.send.bind(transportSSE);
             transportSSE.send = async (message) => {
@@ -184,10 +254,12 @@ async function startExpressServer(port: number, config: Config, connectionList: 
                 return originalSend(message);
             };
 
+            sessions.set(transportSSE.sessionId, transportSSE);
             res.on('close', () => {
                 sessions.delete(transportSSE.sessionId);
-                connection.close().catch((e) => log.error(`Error closing connection: ${e}`));
+                server.close().catch((e) => log.error(e));
             });
+            await server.connect(transportSSE);
         } catch (error) {
             respondWithError(res, error, 'Error in GET /sse');
         }
@@ -235,7 +307,7 @@ async function startExpressServer(port: number, config: Config, connectionList: 
         log.info(JSON.stringify({
             mcpServers: {
                 playwright: {
-                    url:`${url}/sse`
+                    url,
                 },
             },
         }, undefined, 2));
