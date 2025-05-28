@@ -48,6 +48,8 @@ export type CLIOptions = {
   vision?: boolean;
 };
 
+const DEFAULT_CAPABILITIES: ToolCapability[] = ["core", "tabs", "pdf", "history", "wait", "files", "install", "testing"]
+
 function sanitizeForFilePath(s: string) {
     // Avoid control characters in regex by listing only visible ASCII and reserved path characters
     const sanitize = (str: string) => str.replace(/[\\/:*?"<>|]+/g, '-');
@@ -118,7 +120,7 @@ export async function configFromCLIOptions(cliOptions: CLIOptions): Promise<Conf
             browserName,
             launchOptions,
         },
-        capabilities: cliOptions.caps ? cliOptions.caps.split(',').map((c: string) => c.trim() as ToolCapability) : [],
+        capabilities: DEFAULT_CAPABILITIES,
         vision: !!cliOptions.vision,
         outputDir: path.join(os.tmpdir(), 'playwright-mcp-output', sanitizeForFilePath(new Date().toISOString())),
     };
