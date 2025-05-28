@@ -12,30 +12,29 @@
             "default": "chrome",
             "prefill": "chrome"
         },
-        "capabilities": {
-            "title": "Capabilities",
-            "type": "array",
-            "description": "List of capabilities to enable",
-            "editor": "stringList",
-            "prefill": ["tabs", "pdf", "history", "wait", "files", "install"]
-        },
-        "cdpEndpoint": {
-            "title": "CDP Endpoint",
-            "type": "string",
-            "description": "CDP endpoint to connect to",
-            "editor": "textfield"
-        },
         "headless": {
-            "title": "Headless Mode",
+            "title": "Headless mode",
             "type": "boolean",
-            "description": "Run browser in headless mode (default: false)",
-            "default": false
+            "description": "Run browser in headless mode (default: true)",
+            "default": true
         },
         "vision": {
             "title": "Vision Mode",
             "type": "boolean",
             "description": "Run server that uses screenshots (Aria snapshots are used by default)",
             "default": false
+        },
+        "proxyConfiguration": {
+            "title": "Proxy configuration",
+            "type": "object",
+            "description": "Configure Apify Proxy to manage IP rotation, geolocation targeting, and avoid blocks during web scraping. To use Apify datacenter proxies, set `useApifyProxy` to true and leave `apifyProxyGroups` empty for automatic country selection, or specify a country with two-letter ISO country code (e.g., 'US' for the United States, 'GB' for Great Britain). For US residential proxies, set `useApifyProxy` to true, `apifyProxyGroups` to ['RESIDENTIAL'], and `countryCode` to 'US'.",
+            "default": {
+                "useApifyProxy": true
+            },
+            "prefill": {
+                "useApifyProxy": true
+            },
+            "editor": "proxy"
         }
     }
 }
