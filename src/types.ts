@@ -1,4 +1,4 @@
-import type {ProxyConfigurationOptions} from 'apify';
+import type { ProxyConfigurationOptions } from 'apify';
 
 export type ToolCapability = 'core' | 'tabs' | 'pdf' | 'history' | 'wait' | 'files' | 'install';
 

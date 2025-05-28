@@ -5,19 +5,19 @@
 
 // TODO: We need to install browser in dockerfile
 
-import {SSEServerTransport} from '@modelcontextprotocol/sdk/server/sse.js';
-import type {Connection} from '@playwright/mcp';
-import {createConnection} from '@playwright/mcp';
-import type {Config} from '@playwright/mcp/config.js';
-import {Actor} from 'apify';
-import type {Request, Response} from 'express';
+import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
+import type { Connection } from '@playwright/mcp';
+import { createConnection } from '@playwright/mcp';
+import type { Config } from '@playwright/mcp/config.js';
+import { Actor } from 'apify';
+import type { Request, Response } from 'express';
 import express from 'express';
 
 import log from '@apify/log';
 
-import type {CLIOptions} from './config.js';
-import {configFromCLIOptions} from './config.js';
-import type {ImageContentItem, Input} from './types.js';
+import type { CLIOptions } from './config.js';
+import { configFromCLIOptions } from './config.js';
+import type { ImageContentItem, Input } from './types.js';
 
 const HEADER_READINESS_PROBE = 'X-Readiness-Probe';
 
