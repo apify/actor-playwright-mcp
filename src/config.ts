@@ -48,7 +48,7 @@ export type CLIOptions = {
   vision?: boolean;
 };
 
-const DEFAULT_CAPABILITIES: ToolCapability[] = ["core", "tabs", "pdf", "history", "wait", "files", "install", "testing"]
+const DEFAULT_CAPABILITIES: ToolCapability[] = ['core', 'tabs', 'pdf', 'history', 'wait', 'files', 'install', 'testing'];
 
 function sanitizeForFilePath(s: string) {
     // Avoid control characters in regex by listing only visible ASCII and reserved path characters

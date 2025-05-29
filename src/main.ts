@@ -129,7 +129,7 @@ async function saveImagesFromMessage(message: unknown, sessionId: string): Promi
 
 async function startExpressServer(port: number, config: Config, connectionList: Connection[]) {
     const app = express();
-    let transportSSE: SSEServerTransport;
+    const connection = await createConnection(config);
     const sessions = new Map<string, SSEServerTransport>();
 
     function respondWithError(res: Response, error: unknown, logMessage: string, statusCode = 500) {
@@ -169,9 +169,8 @@ async function startExpressServer(port: number, config: Config, connectionList: 
     app.get('/sse', async (_req: Request, res: Response) => {
         try {
             log.info('Received GET message at /sse');
-            transportSSE = new SSEServerTransport('/message', res);
+            const transportSSE = new SSEServerTransport('/message', res);
             sessions.set(transportSSE.sessionId, transportSSE);
-            const connection = await createConnection(config);
             await connection.connect(transportSSE);
             connectionList.push(connection);
 
@@ -235,7 +234,7 @@ async function startExpressServer(port: number, config: Config, connectionList: 
         log.info(JSON.stringify({
             mcpServers: {
                 playwright: {
-                    url:`${url}/sse`
+                    url: `${url}/sse`,
                 },
             },
         }, undefined, 2));
