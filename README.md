@@ -6,6 +6,8 @@ This server enables LLMs to interact with web pages through structured accessibi
 
 All credits to the original authors of https://github.com/microsoft/playwright-mcp
 
+🚩 Claim this MCP server. [Contact info](https://apify.com/contact)
+
 ## Key features
 
 - 🚀 Uses Playwright's accessibility tree instead of pixel-based input for faster, lighter operation
