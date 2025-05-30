@@ -13,6 +13,7 @@ All credits to the original authors of https://github.com/microsoft/playwright-m
 - 🚀 Uses Playwright's accessibility tree instead of pixel-based input for faster, lighter operation
 - 📊 Works with structured data only - no vision models required
 - 🎯 Applies tools deterministically, avoiding the ambiguity of screenshot approaches
+- 🌐 Supports [Apify Proxy](https://apify.com/proxy) (datacenter, residential, custom) and other Apify features
 
 ## Use cases
 
