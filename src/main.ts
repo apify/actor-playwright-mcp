@@ -56,7 +56,7 @@ if (STANDBY_MODE) {
         process.exit(1);
     });
 } else {
-    const msg = `Actor is not designed to run in the NORMAL model. Use MCP server URL to connect to the server.`
+    const msg = `Actor is not designed to run in the NORMAL mode. Use MCP server URL to connect to the server.`
         + `Connect to ${HOST}/sse to establish a connection. Learn more at https://mcp.apify.com/ for more information.`;
     log.info(msg);
     await Actor.exit(msg);
