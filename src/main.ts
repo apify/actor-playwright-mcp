@@ -3,12 +3,13 @@
  * This file needs to be named `main.ts` to be recognized by the Apify platform.
  */
 
-// TODO: We need to install browser in dockerfile
+import { randomUUID } from 'node:crypto';
 
+import { InMemoryEventStore } from '@modelcontextprotocol/sdk/examples/shared/inMemoryEventStore.js';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
-import type { Connection } from '@playwright/mcp';
+import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { createConnection } from '@playwright/mcp';
-import type { Config } from '@playwright/mcp/config.js';
+import type { Config, ToolCapability } from '@playwright/mcp/config.js';
 import { Actor } from 'apify';
 import type { Request, Response } from 'express';
 import express from 'express';
@@ -16,7 +17,7 @@ import express from 'express';
 import log from '@apify/log';
 
 import type { CLIOptions } from './config.js';
-import { configFromCLIOptions } from './config.js';
+import { configFromCLIOptions, DEFAULT_CAPABILITIES } from './config.js';
 import type { ImageContentItem, Input } from './types.js';
 
 const HEADER_READINESS_PROBE = 'X-Readiness-Probe';
@@ -33,7 +34,7 @@ if (!process.env.APIFY_TOKEN) {
     process.exit(1);
 }
 
-const input = (await Actor.getInput<Partial<Input>>()) ?? ({} as Input);
+const input = (await Actor.getInput()) as Partial<Input> & { caps?: string | ToolCapability[] };
 log.info(`Loaded input: ${JSON.stringify(input)} `);
 
 if (STANDBY_MODE) {
@@ -41,17 +42,20 @@ if (STANDBY_MODE) {
         const proxy = await Actor.createProxyConfiguration(input.proxyConfiguration);
         input.proxyServer = await proxy?.newUrl();
     }
-    // cliOptions expects a string, but input.caps is an array
+    // Ensure caps is always an array of ToolCapability
+    if (typeof input.caps === 'string' && input.caps) {
+        input.caps = input.caps.split(',').map((cap: string) => cap.trim()) as ToolCapability[];
+    } else if (!input.caps) {
+        input.caps = DEFAULT_CAPABILITIES;
+    }
     const cliOptions: CLIOptions = {
         ...input as CLIOptions,
-        caps: Array.isArray(input.caps) ? input.caps.join(',') : input.caps,
+        caps: input.caps,
     };
     const config = await configFromCLIOptions(cliOptions);
-    const connectionList: Connection[] = [];
-    setupExitWatchdog(connectionList);
 
     log.info(`Actor is running in the STANDBY mode with config ${JSON.stringify(config)}`);
-    startExpressServer(PORT, config, connectionList).catch((e) => {
+    startExpressServer(PORT, config).catch((e) => {
         log.error(`Failed to start Express server: ${e}`);
         process.exit(1);
     });
@@ -60,18 +64,6 @@ if (STANDBY_MODE) {
         + `Connect to ${HOST}/sse to establish a connection. Learn more at https://mcp.apify.com/ for more information.`;
     log.info(msg);
     await Actor.exit(msg);
-}
-
-function setupExitWatchdog(connectionList: Connection[]) {
-    const handleExit = async () => {
-        setTimeout(() => process.exit(0), 15000);
-        for (const connection of connectionList) await connection.close();
-        process.exit(0);
-    };
-
-    process.stdin.on('close', handleExit);
-    process.on('SIGINT', handleExit);
-    process.on('SIGTERM', handleExit);
 }
 
 function getHelpMessage(host: string): string {
@@ -128,12 +120,13 @@ async function saveImagesFromMessage(message: unknown, sessionId: string): Promi
     }
 }
 
-async function startExpressServer(port: number, config: Config, connectionList: Connection[]) {
+async function startExpressServer(port: number, config: Config) {
     const app = express();
-    const connection = await createConnection(config);
-    const sessions = new Map<string, SSEServerTransport>();
+    const transportsSse = new Map<string, SSEServerTransport>();
+    const transportsStreamable = new Map<string, StreamableHTTPServerTransport>();
+    const server = await createConnection(config);
 
-    function respondWithError(res: Response, error: unknown, logMessage: string, statusCode = 500) {
+    function respondWithError(req: Request, res: Response, error: unknown, logMessage: string, statusCode = 500) {
         log.error(`${logMessage}: ${error}`);
         if (!res.headersSent) {
             res.status(statusCode).json({
@@ -142,7 +135,7 @@ async function startExpressServer(port: number, config: Config, connectionList: 
                     code: statusCode === 500 ? -32603 : -32000,
                     message: statusCode === 500 ? 'Internal server error' : 'Bad Request',
                 },
-                id: null,
+                id: req?.body?.id ?? null,
             });
         }
     }
@@ -154,7 +147,7 @@ async function startExpressServer(port: number, config: Config, connectionList: 
             return;
         }
         try {
-            log.info('Received GET message at root');
+            log.info('MCP API', { mth: req.method, rt: '/', tr: 'SSE' });
             res.setHeader('Content-Type', 'text/event-stream');
             res.setHeader('Cache-Control', 'no-cache');
             res.setHeader('Connection', 'keep-alive');
@@ -163,41 +156,39 @@ async function startExpressServer(port: number, config: Config, connectionList: 
                 data: getActorRunData(),
             }).end();
         } catch (error) {
-            respondWithError(res, error, 'Error in GET /');
+            respondWithError(req, res, error, 'Error in GET /');
         }
     });
 
-    app.get('/sse', async (_req: Request, res: Response) => {
+    app.get('/sse', async (req: Request, res: Response) => {
         try {
-            log.info('Received GET message at /sse');
-            const transportSSE = new SSEServerTransport('/message', res);
-            sessions.set(transportSSE.sessionId, transportSSE);
-            await connection.connect(transportSSE);
-            connectionList.push(connection);
+            log.info('MCP API', { mth: req.method, rt: '/sse', tr: 'sse' });
+            const transport = new SSEServerTransport('/message', res);
+            transportsSse.set(transport.sessionId, transport);
+            await server.connect(transport);
 
-            const originalSend = transportSSE.send.bind(transportSSE);
-            transportSSE.send = async (message) => {
-                log.info(`Sent SSE message to session ${transportSSE.sessionId}`);
+            const originalSend = transport.send.bind(transport);
+            transport.send = async (message) => {
+                log.info(`Sent SSE message to session ${transport.sessionId}`);
                 await Actor.pushData({ message });
                 // Process message and extract/save any image content
-                await saveImagesFromMessage(message, transportSSE.sessionId);
+                await saveImagesFromMessage(message, transport.sessionId);
                 return originalSend(message);
             };
 
             res.on('close', () => {
-                sessions.delete(transportSSE.sessionId);
-                connection.close().catch((e) => log.error(`Error closing connection: ${e}`));
+                transportsSse.delete(transport.sessionId);
+                server.close().catch((error: Error) => log.error(`Error closing connection: ${error}`));
             });
         } catch (error) {
-            respondWithError(res, error, 'Error in GET /sse');
+            respondWithError(req, res, error, 'Error in GET /sse');
         }
     });
 
     app.post('/message', async (req: Request, res: Response) => {
         try {
-            log.info('Received POST message at /message');
-            const { searchParams } = new URL(`http://localhost${req.url}`);
-            const sessionId = searchParams.get('sessionId');
+            log.info('MCP API', { mth: req.method, rt: '/message', tr: 'sse' });
+            const sessionId = new URL(req.url, `http://${req.headers.host}`).searchParams.get('sessionId');
             if (!sessionId) {
                 res.status(400).json({
                     jsonrpc: '2.0',
@@ -209,7 +200,7 @@ async function startExpressServer(port: number, config: Config, connectionList: 
                 });
                 return;
             }
-            const transport = sessions.get(sessionId);
+            const transport = transportsSse.get(sessionId);
             if (!transport) {
                 res.status(404).json({
                     jsonrpc: '2.0',
@@ -224,7 +215,118 @@ async function startExpressServer(port: number, config: Config, connectionList: 
             log.info(`Received POST message for sessionId: ${sessionId}`);
             await transport.handlePostMessage(req, res);
         } catch (error) {
-            respondWithError(res, error, 'Error in POST /message');
+            respondWithError(req, res, error, 'Error in POST /message');
+        }
+    });
+
+    // express.json() middleware to parse JSON bodies.
+    // It must be used before the POST /mcp route but after the GET /sse route :shrug:
+    app.use(express.json());
+    app.post('/mcp', async (req: Request, res: Response) => {
+        log.info('MCP API', { mth: req.method, rt: '/mcp', tr: 'http' });
+        log.info('MCP request body:', req.body);
+        try {
+            // Check for existing session ID
+            const sessionId = req.headers['mcp-session-id'] as string | undefined;
+            let transport: StreamableHTTPServerTransport;
+
+            if (sessionId && transportsStreamable.has(sessionId)) {
+                // Reuse existing transport
+                transport = transportsStreamable.get(sessionId)!;
+            } else if (!sessionId) {
+                // New initialization request
+                const eventStore = new InMemoryEventStore();
+                transport = new StreamableHTTPServerTransport({
+                    sessionIdGenerator: () => randomUUID(),
+                    eventStore, // Enable resumability
+                    onsessioninitialized: (_id: string) => {
+                        // Store the transport by session ID when session is initialized
+                        // This avoids race conditions where requests might come in before the session is stored
+                        transportsStreamable.set(_id, transport);
+                    },
+                });
+
+                await server.connect(transport);
+                await transport.handleRequest(req, res, req.body);
+            } else {
+                // Invalid request - no session ID or not initialization request
+                res.status(400).json({
+                    jsonrpc: '2.0',
+                    error: {
+                        code: -32000,
+                        message: 'Bad Request: No valid session ID provided',
+                    },
+                    id: req?.body?.id,
+                });
+                return;
+            }
+            // Handle the request with existing transport - no need to reconnect
+            await transport.handleRequest(req, res, req.body);
+        } catch (error) {
+            respondWithError(req, res, error, 'Error handling MCP request');
+        }
+    });
+
+    // Handle GET requests for SSE streams (using built-in support from StreamableHTTP)
+    app.get('/mcp', async (req: Request, res: Response) => {
+        log.info('MCP API', { mth: req.method, rt: '/mcp', tr: 'http' });
+        const sessionId = req.headers['mcp-session-id'] as string | undefined;
+        if (!sessionId || !transportsStreamable.has(sessionId)) {
+            res.status(400).json({
+                jsonrpc: '2.0',
+                error: {
+                    code: -32000,
+                    message: 'Bad Request: No valid session ID provided',
+                },
+                id: req?.body?.id,
+            });
+            return;
+        }
+
+        // Check for Last-Event-ID header for resumability
+        const lastEventId = req.headers['last-event-id'] as string | undefined;
+        if (lastEventId) {
+            log.error(`Client reconnecting with Last-Event-ID: ${lastEventId}`);
+        } else {
+            log.error(`Establishing new SSE stream for session ${sessionId}`);
+        }
+
+        const transport = transportsStreamable.get(sessionId);
+        await transport!.handleRequest(req, res);
+    });
+
+    // Handle DELETE requests for session termination (according to MCP spec)
+    app.delete('/mcp', async (req: Request, res: Response) => {
+        const sessionId = req.headers['mcp-session-id'] as string | undefined;
+        if (!sessionId || !transportsStreamable.has(sessionId)) {
+            res.status(400).json({
+                jsonrpc: '2.0',
+                error: {
+                    code: -32000,
+                    message: 'Bad Request: No valid session ID provided',
+                },
+                id: req?.body?.id,
+            });
+            return;
+        }
+
+        log.error(`Received session termination request for session ${sessionId}`);
+
+        try {
+            const transport = transportsStreamable.get(sessionId);
+            await transport!.handleRequest(req, res);
+        } catch (error) {
+            log.exception(error as Error, 'Error handling session termination:');
+            if (!res.headersSent) {
+                res.status(500).json({
+                    jsonrpc: '2.0',
+                    error: {
+                        code: -32603,
+                        message: 'Error handling session termination',
+                    },
+                    id: req?.body?.id,
+                });
+            }
         }
     });
 
@@ -235,7 +337,7 @@ async function startExpressServer(port: number, config: Config, connectionList: 
         log.info(JSON.stringify({
             mcpServers: {
                 playwright: {
-                    url: `${url}/sse`,
+                    url: `${url}/mcp`,
                     headers: {
                         Authorization: 'Bearer YOUR_APIFY_TOKEN',
                     },

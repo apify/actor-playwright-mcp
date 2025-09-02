@@ -21,34 +21,34 @@ import type { Config, ToolCapability } from '@playwright/mcp/config.js';
 import type { LaunchOptions } from 'playwright';
 
 export type CLIOptions = {
-  allowedOrigins?: string[];
-  blockedOrigins?: string[];
-  blockServiceWorkers?: boolean;
-  browser?: string;
-  caps?: string;
-  cdpEndpoint?: string;
-  config?: string;
-  device?: string;
-  executablePath?: string;
-  headless?: boolean;
-  host?: string;
-  ignoreHttpsErrors?: boolean;
-  isolated?: boolean;
-  imageResponses: boolean;
-  sandbox: boolean;
-  outputDir?: string;
-  port?: number;
-  proxyBypass?: string;
-  proxyServer?: string;
-  saveTrace?: boolean;
-  storageState?: string;
-  userAgent?: string;
-  userDataDir?: string;
-  viewportSize?: string;
-  vision?: boolean;
+    allowedOrigins?: string[];
+    blockedOrigins?: string[];
+    blockServiceWorkers?: boolean;
+    browser?: string;
+    caps?: string[] | string;
+    cdpEndpoint?: string;
+    config?: string;
+    device?: string;
+    executablePath?: string;
+    headless?: boolean;
+    host?: string;
+    ignoreHttpsErrors?: boolean;
+    isolated?: boolean;
+    imageResponses?: 'allow' | 'omit';
+    sandbox?: boolean;
+    outputDir?: string;
+    port?: number;
+    proxyBypass?: string;
+    proxyServer?: string;
+    saveSession?: boolean;
+    saveTrace?: boolean;
+    storageState?: string;
+    userAgent?: string;
+    userDataDir?: string;
+    viewportSize?: string;
 };
 
-const DEFAULT_CAPABILITIES: ToolCapability[] = ['core', 'tabs', 'pdf', 'history', 'wait', 'files', 'install', 'testing'];
+export const DEFAULT_CAPABILITIES: ToolCapability[] = ['core'];
 
 function sanitizeForFilePath(s: string) {
     // Avoid control characters in regex by listing only visible ASCII and reserved path characters
@@ -121,7 +121,6 @@ export async function configFromCLIOptions(cliOptions: CLIOptions): Promise<Conf
             launchOptions,
         },
         capabilities: DEFAULT_CAPABILITIES,
-        vision: !!cliOptions.vision,
         outputDir: path.join(os.tmpdir(), 'playwright-mcp-output', sanitizeForFilePath(new Date().toISOString())),
     };
 }
