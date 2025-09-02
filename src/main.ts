@@ -1,5 +1,5 @@
 /**
- * Serves as an Actor MCP SSE server entry point.
+ * Serves as an Actor MCP server entry point supporting both streamable HTTP and SSE transports.
  * This file needs to be named `main.ts` to be recognized by the Apify platform.
  */
 
@@ -154,7 +154,7 @@ function getActorRunData() {
 }
 
 /**
- * Processes an SSE message to detect and save image content to KV store
+ * Processes an MCP message to detect and save image content to KV store
  * @param message - The message to process
  * @param sessionId - The session ID associated with the message
  */
@@ -230,7 +230,7 @@ async function startExpressServer(port: number, config: Config) {
         }
 
         try {
-            log.info('MCP API', { mth: req.method, rt: '/', tr: 'sse' });
+            log.info('MCP API (Root endpoint)', { mth: req.method, rt: '/', tr: 'info' });
             res.setHeader('Content-Type', 'text/event-stream');
             res.setHeader('Cache-Control', 'no-cache');
             res.setHeader('Connection', 'keep-alive');
@@ -277,7 +277,7 @@ async function startExpressServer(port: number, config: Config) {
 
     app.post('/message', async (req: Request, res: Response) => {
         try {
-            log.info('MCP API', { mth: req.method, rt: '/message', tr: 'sse' });
+            log.info('MCP API (Legacy SSE)', { mth: req.method, rt: '/message', tr: 'sse' });
             const sessionId = new URL(req.url, `http://${req.headers.host}`).searchParams.get('sessionId');
             if (!sessionId) {
                 res.status(400).json({
@@ -310,10 +310,10 @@ async function startExpressServer(port: number, config: Config) {
     });
 
     // express.json() middleware to parse JSON bodies.
-    // It must be used before the POST /mcp route but after the GET /sse route :shrug:
+    // It must be used before the POST /mcp route but after the GET /sse route
     app.use(express.json());
     app.post('/mcp', async (req: Request, res: Response) => {
-        log.info('MCP API', { mth: req.method, rt: '/mcp', tr: 'http' });
+        log.info('MCP API (Streamable HTTP)', { mth: req.method, rt: '/mcp', tr: 'http' });
         log.info('MCP request body:', req.body);
         try {
             // Check for existing session ID
@@ -357,7 +357,7 @@ async function startExpressServer(port: number, config: Config) {
         }
     });
 
-    // Handle GET requests for SSE streams (using built-in support from StreamableHTTP)
+    // Handle GET requests for streamable HTTP transport (using built-in support from StreamableHTTP)
     app.get('/mcp', async (req: Request, res: Response) => {
         // Browser client logic
         // Check if the request is from a HTML browser
@@ -366,7 +366,7 @@ async function startExpressServer(port: number, config: Config) {
             return;
         }
 
-        log.info('MCP API', { mth: req.method, rt: '/mcp', tr: 'http' });
+        log.info('MCP API (Streamable HTTP)', { mth: req.method, rt: '/mcp', tr: 'http' });
         const sessionId = req.headers['mcp-session-id'] as string | undefined;
         if (!sessionId || !transportsStreamable.has(sessionId)) {
             res.status(400).json({
@@ -385,7 +385,7 @@ async function startExpressServer(port: number, config: Config) {
         if (lastEventId) {
             log.error(`Client reconnecting with Last-Event-ID: ${lastEventId}`);
         } else {
-            log.error(`Establishing new SSE stream for session ${sessionId}`);
+            log.error(`Establishing new streamable HTTP connection for session ${sessionId}`);
         }
 
         const transport = transportsStreamable.get(sessionId);
@@ -430,7 +430,7 @@ async function startExpressServer(port: number, config: Config) {
     app.listen(port, () => {
         const url = Actor.isAtHome() ? `${HOST}` : `http://localhost:${port}`;
         log.info(`Listening on ${url}`);
-        log.info('Put this in your client config:');
+        log.info('Recommended client configuration (using modern streamable HTTP transport):');
         log.info(JSON.stringify({
             mcpServers: {
                 playwright: {

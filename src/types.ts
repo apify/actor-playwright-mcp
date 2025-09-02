@@ -1,5 +1,5 @@
-import type { ProxyConfigurationOptions } from 'apify';
 import type { ToolCapability } from '@playwright/mcp/config.js';
+import type { ProxyConfigurationOptions } from 'apify';
 
 export type Input = {
     browser: | 'chrome' | 'firefox' | 'webkit' | 'msedge'
