@@ -1,12 +1,38 @@
 # Playwright MCP Server
 
-This Actor wraps the [playwright-mcp](https://github.com/microsoft/playwright-mcp) project to provide a serverless Playwright browser in the cloud.
-A Model Context Protocol (MCP) server that provides browser automation capabilities using Playwright. 
-This server enables LLMs to interact with web pages through structured accessibility snapshots, bypassing the need for screenshots or visually tuned models.
+A Model Context Protocol (MCP) server that provides browser automation capabilities using Playwright. This server enables LLMs to interact with web pages through structured accessibility snapshots, bypassing the need for screenshots or visually tuned models.
 
-All credits to the original authors of https://github.com/microsoft/playwright-mcp
+**About this MCP Server:** To understand how to connect to and utilize this MCP server, you can refer to the official Model Context Protocol documentation at [mcp.apify.com](https://mcp.apify.com).
 
-🚩 Claim this MCP server. [Contact info](https://apify.com/contact)
+## Connection URL
+MCP clients can connect to this server at: `https://jiri-spilka--playwright-mcp-server.apify.actor/sse`
+
+## Client Configuration
+To connect to this MCP server, use the following configuration in your MCP client:
+
+```json
+{
+  "mcpServers": {
+    "playwright": {
+      "url": "https://jiri-spilka--playwright-mcp-server.apify.actor/sse",
+      "headers": {
+        "Authorization": "Bearer YOUR_APIFY_TOKEN"
+      }
+    }
+  }
+}
+```
+
+**Note:** Replace `YOUR_APIFY_TOKEN` with your actual Apify API token. You can find your token in the [Apify Console](https://console.apify.com/account/integrations).
+
+## Links
+- **GitHub Repository**: [https://github.com/microsoft/playwright-mcp](https://github.com/microsoft/playwright-mcp)
+- **Actor Repository**: [https://github.com/apify/actor-playwright-mcp](https://github.com/apify/actor-playwright-mcp)
+- **Apify MCP Documentation**: [https://mcp.apify.com](https://mcp.apify.com)
+
+## 🚩 Claim this MCP server
+All credits to the original authors of [https://github.com/microsoft/playwright-mcp](https://github.com/microsoft/playwright-mcp)
+To claim this server, please write to [ai@apify.com](mailto:ai@apify.com).
 
 ## Key features
 
@@ -254,3 +280,12 @@ All credits to the original authors of https://github.com/microsoft/playwright-m
         - `promptText` (string, optional): The text of the prompt in case of a prompt dialog.
 
 <!--- End of generated section -->
+
+## References
+To learn more about Apify and Actors, take a look at the following resources:
+- [Apify SDK for JavaScript documentation](https://docs.apify.com/sdk/js)
+- [Apify SDK for Python documentation](https://docs.apify.com/sdk/python)
+- [Apify Platform documentation](https://docs.apify.com/platform)
+- [Apify MCP Server](https://docs.apify.com/platform/integrations/mcp)
+- [Webinar: Building and Monetizing MCP Servers on Apify](https://www.youtube.com/watch?v=w3AH3jIrXXo)
+- [Join our developer community on Discord](https://discord.com/invite/jyEM2PRvMU)

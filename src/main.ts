@@ -56,9 +56,10 @@ if (STANDBY_MODE) {
         process.exit(1);
     });
 } else {
-    const msg = `Actor is not designed to run in the NORMAL model (use this mode only for debugging purposes)`;
-    log.error(msg);
-    await Actor.fail(msg);
+    const msg = `Actor is not designed to run in the NORMAL mode. Use MCP server URL to connect to the server.`
+        + `Connect to ${HOST}/sse to establish a connection. Learn more at https://mcp.apify.com/ for more information.`;
+    log.info(msg);
+    await Actor.exit(msg);
 }
 
 function setupExitWatchdog(connectionList: Connection[]) {
@@ -235,6 +236,9 @@ async function startExpressServer(port: number, config: Config, connectionList: 
             mcpServers: {
                 playwright: {
                     url: `${url}/sse`,
+                    headers: {
+                        Authorization: 'Bearer YOUR_APIFY_TOKEN',
+                    },
                 },
             },
         }, undefined, 2));
