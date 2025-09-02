@@ -52,7 +52,6 @@ function serveHTMLPage(req: Request, res: Response): void {
  * @returns HTML string
  */
 function getHTMLPage(mcpUrl: string): string {
-    const sseUrl = mcpUrl.replace('/mcp', '/sse');
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -71,19 +70,12 @@ function getHTMLPage(mcpUrl: string): string {
     <h1>Playwright MCP Server</h1>
     <p>Model Context Protocol server for browser automation.</p>
     
-    <div class="recommended">
-        <p><strong>🚀 Recommended Endpoint (Streamable HTTP):</strong></p>
+    <div>
+        <p><strong>Connect with MCP client to this URL:</strong></p>
         <div class="url">${mcpUrl}</div>
-        <p><small>Modern transport with better performance and reliability.</small></p>
     </div>
     
-    <div class="legacy">
-        <p><strong>⚠️ Legacy Endpoint (SSE):</strong></p>
-        <div class="url">${sseUrl}</div>
-        <p><small>Available for backward compatibility only.</small></p>
-    </div>
-    
-    <h2>MCP Configuration</h2>
+    <h2>MCP client configuration (claude-desktop)</h2>
     <pre style="background: #f8f9fa; padding: 15px; border-radius: 4px; overflow-x: auto;">
 {
   "mcpServers": {
@@ -136,7 +128,7 @@ if (STANDBY_MODE) {
     });
 } else {
     const msg = `Actor is not designed to run in the NORMAL mode. Use MCP server URL to connect to the server.`
-        + `Connect to ${HOST}/mcp to establish a connection. Learn more at https://mcp.apify.com/ for more information.`;
+        + `Connect to https://jiri-spilka--playwright-mcp-server.apify.actor/mcp to establish a connection. Learn more at https://mcp.apify.com/ for more information.`;
     log.info(msg);
     await Actor.exit(msg);
 }
