@@ -11,6 +11,7 @@ export type Input = {
     proxyServer?: string;
     headless?: boolean;
     vision?: boolean;
+    imageResponses?: 'allow' | 'omit';
 
 };
 

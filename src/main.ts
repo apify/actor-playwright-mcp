@@ -4,7 +4,6 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import path from 'node:path';
 
 import { InMemoryEventStore } from '@modelcontextprotocol/sdk/examples/shared/inMemoryEventStore.js';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
@@ -32,6 +31,72 @@ const STANDBY_MODE = Actor.getEnv().metaOrigin === 'STANDBY';
  */
 export function isHTMLBrowser(req: Request): boolean {
     return req.headers.accept?.includes('text/html') || false;
+}
+
+/**
+ * Serves HTML page for browser requests
+ * @param req - Express request object
+ * @param res - Express response object
+ */
+function serveHTMLPage(req: Request, res: Response): void {
+    const serverUrl = `${req.protocol}://${req.get('host')}`;
+    const mcpUrl = `${serverUrl}/mcp`;
+    const html = getHTMLPage(mcpUrl);
+    res.setHeader('Content-Type', 'text/html');
+    res.send(html);
+}
+
+/**
+ * Generates simple HTML page with server URL and MCP client link
+ * @param mcpUrl - The MCP endpoint URL
+ * @returns HTML string
+ */
+function getHTMLPage(mcpUrl: string): string {
+    const sseUrl = mcpUrl.replace('/mcp', '/sse');
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Playwright MCP Server</title>
+    <style>
+        body { font-family: system-ui; max-width: 600px; margin: 50px auto; padding: 20px; }
+        .url { background: #f0f0f0; padding: 10px; border-radius: 4px; font-family: monospace; word-break: break-all; margin: 10px 0; }
+        .test-link { display: inline-block; background: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px; margin: 10px 0; }
+        .test-link:hover { background: #0056b3; }
+        .recommended { background: #d4edda; border: 1px solid #c3e6cb; padding: 10px; border-radius: 4px; margin: 10px 0; }
+        .legacy { background: #fff3cd; border: 1px solid #ffeaa7; padding: 10px; border-radius: 4px; margin: 10px 0; }
+    </style>
+</head>
+<body>
+    <h1>Playwright MCP Server</h1>
+    <p>Model Context Protocol server for browser automation.</p>
+    
+    <div class="recommended">
+        <p><strong>🚀 Recommended Endpoint (Streamable HTTP):</strong></p>
+        <div class="url">${mcpUrl}</div>
+        <p><small>Modern transport with better performance and reliability.</small></p>
+    </div>
+    
+    <div class="legacy">
+        <p><strong>⚠️ Legacy Endpoint (SSE):</strong></p>
+        <div class="url">${sseUrl}</div>
+        <p><small>Available for backward compatibility only.</small></p>
+    </div>
+    
+    <h2>MCP Configuration</h2>
+    <pre style="background: #f8f9fa; padding: 15px; border-radius: 4px; overflow-x: auto;">
+{
+  "mcpServers": {
+    "playwright": {
+      "url": "${mcpUrl}",
+      "headers": {
+        "Authorization": "Bearer YOUR_APIFY_TOKEN"
+      }
+    }
+  }
+}</pre>
+</body>
+</html>`;
 }
 
 await Actor.init();
@@ -77,7 +142,7 @@ if (STANDBY_MODE) {
 }
 
 function getHelpMessage(host: string): string {
-    return `Connect to ${host}/mcp to establish a connection.`;
+    return `Connect to ${host}/mcp to establish a connection using the modern streamable HTTP transport.`;
 }
 
 function getActorRunData() {
@@ -156,16 +221,14 @@ async function startExpressServer(port: number, config: Config) {
             res.status(200).json({ message: 'Server is ready' }).end();
             return;
         }
-        
+
         // Browser client logic
         // Check if the request is from a HTML browser
         if (isHTMLBrowser(req)) {
-            // Serve the index.html file
-            const indexPath = path.join(__dirname, 'public', 'index.html');
-            res.sendFile(indexPath);
+            serveHTMLPage(req, res);
             return;
         }
-        
+
         try {
             log.info('MCP API', { mth: req.method, rt: '/', tr: 'sse' });
             res.setHeader('Content-Type', 'text/event-stream');
@@ -184,14 +247,12 @@ async function startExpressServer(port: number, config: Config) {
         // Browser client logic
         // Check if the request is from a HTML browser
         if (isHTMLBrowser(req)) {
-            // Serve the index.html file
-            const indexPath = path.join(__dirname, 'public', 'index.html');
-            res.sendFile(indexPath);
+            serveHTMLPage(req, res);
             return;
         }
-        
+
         try {
-            log.info('MCP API', { mth: req.method, rt: '/sse', tr: 'sse' });
+            log.info('MCP API (Legacy SSE)', { mth: req.method, rt: '/sse', tr: 'sse' });
             const transport = new SSEServerTransport('/message', res);
             transportsSse.set(transport.sessionId, transport);
             await server.connect(transport);
@@ -301,12 +362,10 @@ async function startExpressServer(port: number, config: Config) {
         // Browser client logic
         // Check if the request is from a HTML browser
         if (isHTMLBrowser(req)) {
-            // Serve the index.html file
-            const indexPath = path.join(__dirname, 'public', 'index.html');
-            res.sendFile(indexPath);
+            serveHTMLPage(req, res);
             return;
         }
-        
+
         log.info('MCP API', { mth: req.method, rt: '/mcp', tr: 'http' });
         const sessionId = req.headers['mcp-session-id'] as string | undefined;
         if (!sessionId || !transportsStreamable.has(sessionId)) {

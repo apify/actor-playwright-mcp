@@ -122,5 +122,6 @@ export async function configFromCLIOptions(cliOptions: CLIOptions): Promise<Conf
         },
         capabilities: DEFAULT_CAPABILITIES,
         outputDir: path.join(os.tmpdir(), 'playwright-mcp-output', sanitizeForFilePath(new Date().toISOString())),
+        imageResponses: cliOptions.imageResponses,
     };
 }
