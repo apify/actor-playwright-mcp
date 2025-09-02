@@ -4,6 +4,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import path from 'node:path';
 
 import { InMemoryEventStore } from '@modelcontextprotocol/sdk/examples/shared/inMemoryEventStore.js';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
@@ -23,6 +24,15 @@ import type { ImageContentItem, Input } from './types.js';
 const HEADER_READINESS_PROBE = 'X-Readiness-Probe';
 
 const STANDBY_MODE = Actor.getEnv().metaOrigin === 'STANDBY';
+
+/**
+ * Detects if the request is from a HTML browser based on Accept header
+ * @param req - Express request object
+ * @returns true if the request is from a HTML browser
+ */
+export function isHTMLBrowser(req: Request): boolean {
+    return req.headers.accept?.includes('text/html') || false;
+}
 
 await Actor.init();
 
@@ -61,13 +71,13 @@ if (STANDBY_MODE) {
     });
 } else {
     const msg = `Actor is not designed to run in the NORMAL mode. Use MCP server URL to connect to the server.`
-        + `Connect to ${HOST}/sse to establish a connection. Learn more at https://mcp.apify.com/ for more information.`;
+        + `Connect to ${HOST}/mcp to establish a connection. Learn more at https://mcp.apify.com/ for more information.`;
     log.info(msg);
     await Actor.exit(msg);
 }
 
 function getHelpMessage(host: string): string {
-    return `Connect to ${host}/sse to establish a connection.`;
+    return `Connect to ${host}/mcp to establish a connection.`;
 }
 
 function getActorRunData() {
@@ -146,8 +156,18 @@ async function startExpressServer(port: number, config: Config) {
             res.status(200).json({ message: 'Server is ready' }).end();
             return;
         }
+        
+        // Browser client logic
+        // Check if the request is from a HTML browser
+        if (isHTMLBrowser(req)) {
+            // Serve the index.html file
+            const indexPath = path.join(__dirname, 'public', 'index.html');
+            res.sendFile(indexPath);
+            return;
+        }
+        
         try {
-            log.info('MCP API', { mth: req.method, rt: '/', tr: 'SSE' });
+            log.info('MCP API', { mth: req.method, rt: '/', tr: 'sse' });
             res.setHeader('Content-Type', 'text/event-stream');
             res.setHeader('Cache-Control', 'no-cache');
             res.setHeader('Connection', 'keep-alive');
@@ -161,6 +181,15 @@ async function startExpressServer(port: number, config: Config) {
     });
 
     app.get('/sse', async (req: Request, res: Response) => {
+        // Browser client logic
+        // Check if the request is from a HTML browser
+        if (isHTMLBrowser(req)) {
+            // Serve the index.html file
+            const indexPath = path.join(__dirname, 'public', 'index.html');
+            res.sendFile(indexPath);
+            return;
+        }
+        
         try {
             log.info('MCP API', { mth: req.method, rt: '/sse', tr: 'sse' });
             const transport = new SSEServerTransport('/message', res);
@@ -269,6 +298,15 @@ async function startExpressServer(port: number, config: Config) {
 
     // Handle GET requests for SSE streams (using built-in support from StreamableHTTP)
     app.get('/mcp', async (req: Request, res: Response) => {
+        // Browser client logic
+        // Check if the request is from a HTML browser
+        if (isHTMLBrowser(req)) {
+            // Serve the index.html file
+            const indexPath = path.join(__dirname, 'public', 'index.html');
+            res.sendFile(indexPath);
+            return;
+        }
+        
         log.info('MCP API', { mth: req.method, rt: '/mcp', tr: 'http' });
         const sessionId = req.headers['mcp-session-id'] as string | undefined;
         if (!sessionId || !transportsStreamable.has(sessionId)) {
@@ -344,5 +382,22 @@ async function startExpressServer(port: number, config: Config) {
                 },
             },
         }, undefined, 2));
+    });
+
+    // Handle server shutdown
+    process.on('SIGINT', async () => {
+        log.error('Shutting down server...');
+        // Close all active Streamable HTTP transports to properly clean up resources
+        for (const [sessionId, transport] of transportsStreamable) {
+            try {
+                log.error(`Closing transport for session ${sessionId}`);
+                await transport.close();
+                transportsStreamable.delete(sessionId);
+            } catch (error) {
+                log.error(`Error closing transport for session ${sessionId}: ${error}`);
+            }
+        }
+        log.error('Server shutdown complete');
+        process.exit(0);
     });
 }

@@ -1,10 +1,10 @@
 {
   "actorSpecification": 1,
-  "name": "playwright-mcp",
+  "name": "playwright-mcp-server",
   "title": "Playwright MCP Server",
   "description": "A Model Context Protocol (MCP) server that provides browser automation capabilities using Playwright",
-  "version": "0.0",
+  "version": "0.1",
   "input": "./input_schema.json",
   "dockerfile": "./Dockerfile",
-  "webServerMcpPath": "/sse"
+  "webServerMcpPath": "/mcp"
 }
