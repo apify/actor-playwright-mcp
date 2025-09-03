@@ -1,6 +1,6 @@
 # Playwright MCP Server
 
-[![Actor badge](https://apify.com/actor-badge?actor=apify/playwright-mcp-server)](https://apify.com/apify/playwright-mcp-server)
+[![Actor badge](https://apify.com/actor-badge?actor=jiri.spilka/playwright-mcp-server)](https://apify.com/jiri.spilka/playwright-mcp-server)
 
 A Model Context Protocol (MCP) server that provides browser automation capabilities using Playwright. This server enables LLMs to interact with web pages through structured accessibility snapshots, bypassing the need for screenshots or visually tuned models.
 
