@@ -1,6 +1,5 @@
+import type { ToolCapability } from '@playwright/mcp/config.js';
 import type { ProxyConfigurationOptions } from 'apify';
-
-export type ToolCapability = 'core' | 'tabs' | 'pdf' | 'history' | 'wait' | 'files' | 'install';
 
 export type Input = {
     browser: | 'chrome' | 'firefox' | 'webkit' | 'msedge'
@@ -12,6 +11,7 @@ export type Input = {
     proxyServer?: string;
     headless?: boolean;
     vision?: boolean;
+    imageResponses?: 'allow' | 'omit';
 
 };
 

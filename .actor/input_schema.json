@@ -15,9 +15,9 @@
         "capabilities": {
             "title": "Capabilities",
             "type": "array",
-            "description": "List of capabilities to enable",
+            "description": "List of capabilities to enable, possible values: core, pdf, vision",
             "editor": "stringList",
-            "prefill": ["tabs", "pdf", "history", "wait", "files", "install"]
+            "prefill": ["core"]
         },
         "cdpEndpoint": {
             "title": "CDP Endpoint",
@@ -28,14 +28,21 @@
         "headless": {
             "title": "Headless Mode",
             "type": "boolean",
-            "description": "Run browser in headless mode (default: false)",
-            "default": false
+            "description": "Run browser in headless mode (default: true)",
+            "default": true
         },
         "vision": {
             "title": "Vision Mode",
             "type": "boolean",
             "description": "Run server that uses screenshots (Aria snapshots are used by default)",
             "default": false
+        },
+        "imageResponses": {
+            "title": "Image Responses",
+            "type": "string",
+            "description": "Whether to send image responses to the client. Can be 'allow' or 'omit'. Defaults to 'allow'.",
+            "enum": ["allow", "omit"],
+            "default": "allow"
         }
     }
 }

@@ -1,27 +1,24 @@
 {
-  "name": "@apify/actors-mcp-server",
+  "name": "playwright-mcp",
   "version": "0.1.24",
   "type": "module",
-  "description": "Model Context Protocol Server for Apify",
+  "description": "Playwright MCP server",
   "engines": {
     "node": ">=18.0.0"
   },
   "main": "dist/index.js",
-  "bin": {
-    "actors-mcp-server": "./dist/stdio.js"
-  },
   "files": [
     "dist",
     "LICENSE"
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/apify/actors-mcp-server.git"
+    "url": "https://github.com/apify/actor-playwright-mcp.git"
   },
   "bugs": {
-    "url": "https://github.com/apify/actors-mcp-server/issues"
+    "url": "https://github.com/apify/actor-playwright-mcp/issues"
   },
-  "homepage": "https://apify.com/apify/actors-mcp-server",
+  "homepage": "https://apify.com/apify/actor-playwright-mcp",
   "keywords": [
     "apify",
     "mcp",
@@ -32,7 +29,7 @@
   "dependencies": {
     "@apify/log": "^2.5.16",
     "@modelcontextprotocol/sdk": "^1.10.1",
-    "@playwright/mcp": "^0.0.27",
+    "@playwright/mcp": "^0.0.36",
     "apify": "^3.4.0",
     "apify-client": "^2.12.1",
     "express": "^4.21.2"

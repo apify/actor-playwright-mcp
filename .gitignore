@@ -2,18 +2,15 @@
 
 .idea
 .vscode
+src/storage
 storage
 apify_storage
 crawlee_storage
 node_modules
 dist
 tsconfig.tsbuildinfo
+src/storage/*
 storage/*
-!storage/key_value_stores
-storage/key_value_stores/*
-!storage/key_value_stores/default
-storage/key_value_stores/default/*
-!storage/key_value_stores/default/INPUT.json
 
 # Added by Apify CLI
 .venv
