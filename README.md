@@ -7,7 +7,11 @@ A Model Context Protocol (MCP) server that provides browser automation capabilit
 **About this MCP Server:** To understand how to connect to and utilize this MCP server, you can refer to the official Model Context Protocol documentation at [mcp.apify.com](https://mcp.apify.com).
 
 ## Connection URL
-MCP clients can connect to this server at: `https://jiri-spilka--playwright-mcp-server.apify.actor/mcp`
+MCP clients can connect to this server at:
+
+```text
+https://jiri-spilka--playwright-mcp-server.apify.actor/mcp
+```
 
 ## Client Configuration
 To connect to this MCP server, use the following configuration in your MCP client:
