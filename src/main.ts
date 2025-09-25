@@ -149,18 +149,29 @@ async function startExpressServer(port: number, config: Config) {
     const transportsStreamable = new Map<string, StreamableHTTPServerTransport>();
     const server = await createConnection(config);
 
-    function respondWithError(req: Request, res: Response, error: unknown, logMessage: string, statusCode = 500) {
-        log.error(`${logMessage}: ${error}`);
+    function respondWithServerError(req: Request, res: Response, error: unknown, message: string) {
+        log.error(`${message}: ${error}`);
         if (!res.headersSent) {
-            res.status(statusCode).json({
+            res.status(500).json({
                 jsonrpc: '2.0',
                 error: {
-                    code: statusCode === 500 ? -32603 : -32000,
-                    message: statusCode === 500 ? 'Internal server error' : 'Bad Request',
+                    code: -32603,
+                    message,
                 },
                 id: req?.body?.id ?? null,
             });
         }
+    }
+
+    function respondWithBadRequest(req: Request, res: Response, message: string) {
+        res.status(400).json({
+            jsonrpc: '2.0',
+            error: {
+                code: -32000,
+                message,
+            },
+            id: req?.body?.id ?? null,
+        });
     }
 
     app.get('/', async (req: Request, res: Response) => {
@@ -187,7 +198,7 @@ async function startExpressServer(port: number, config: Config) {
                 data: getActorRunData(),
             }).end();
         } catch (error) {
-            respondWithError(req, res, error, 'Error in GET /');
+            respondWithServerError(req, res, error, 'Error in GET /');
         }
     });
 
@@ -224,17 +235,10 @@ async function startExpressServer(port: number, config: Config) {
                 await transport.handleRequest(req, res, req.body);
             } else {
                 // Invalid request - no session ID or not initialization request
-                res.status(400).json({
-                    jsonrpc: '2.0',
-                    error: {
-                        code: -32000,
-                        message: 'Bad Request: No valid session ID provided',
-                    },
-                    id: req?.body?.id,
-                });
+                respondWithBadRequest(req, res, 'Bad Request: No valid session ID provided');
             }
         } catch (error) {
-            respondWithError(req, res, error, 'Error handling MCP request');
+            respondWithServerError(req, res, error, 'Error handling MCP request');
         }
     });
 
@@ -242,17 +246,10 @@ async function startExpressServer(port: number, config: Config) {
     const handleSessionRequest = async (req: Request, res: Response) => {
         const sessionId = req.headers['mcp-session-id'] as string | undefined;
         if (!sessionId || !transportsStreamable.has(sessionId)) {
-            res.status(400).json({
-                jsonrpc: '2.0',
-                error: {
-                    code: -32000,
-                    message: 'Bad Request: No valid session ID provided',
-                },
-                id: req?.body?.id ?? null,
-            });
+            respondWithBadRequest(req, res, 'Bad Request: No valid session ID provided');
             return;
         }
-
+        
         const transport = transportsStreamable.get(sessionId);
         await transport!.handleRequest(req, res);
     };
@@ -289,17 +286,7 @@ async function startExpressServer(port: number, config: Config) {
         try {
             await handleSessionRequest(req, res);
         } catch (error) {
-            log.exception(error as Error, 'Error handling session termination:');
-            if (!res.headersSent) {
-                res.status(500).json({
-                    jsonrpc: '2.0',
-                    error: {
-                        code: -32603,
-                        message: 'Error handling session termination',
-                    },
-                    id: req?.body?.id,
-                });
-            }
+            respondWithServerError(req, res, error, 'Error handling session termination');
         }
     });
 
