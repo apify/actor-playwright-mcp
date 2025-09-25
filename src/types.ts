@@ -14,11 +14,3 @@ export type Input = {
     imageResponses?: 'allow' | 'omit';
 
 };
-
-// Define a type for image content items
-export interface ImageContentItem {
-    type?: string;
-    data?: string;
-
-    [key: string]: unknown;
-}

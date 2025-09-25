@@ -6,7 +6,6 @@
 import { randomUUID } from 'node:crypto';
 
 import { InMemoryEventStore } from '@modelcontextprotocol/sdk/examples/shared/inMemoryEventStore.js';
-import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { createConnection } from '@playwright/mcp';
 import type { Config, ToolCapability } from '@playwright/mcp/config.js';
@@ -18,7 +17,7 @@ import log from '@apify/log';
 
 import type { CLIOptions } from './config.js';
 import { configFromCLIOptions, DEFAULT_CAPABILITIES } from './config.js';
-import type { ImageContentItem, Input } from './types.js';
+import type { Input } from './types.js';
 
 const HEADER_READINESS_PROBE = 'X-Readiness-Probe';
 
@@ -145,51 +144,8 @@ function getActorRunData() {
     };
 }
 
-/**
- * Processes an MCP message to detect and save image content to KV store
- * @param message - The message to process
- * @param sessionId - The session ID associated with the message
- */
-async function saveImagesFromMessage(message: unknown, sessionId: string): Promise<void> {
-    try {
-        // Parse the message if it's a string
-        const messageObj = typeof message === 'string' ? JSON.parse(message) : message;
-
-        // Check if the message contains image content
-        const hasImageContent = messageObj?.result?.content?.some(
-            (item: ImageContentItem) => item?.type === 'image' && item?.data,
-        );
-        const kv = await Actor.openKeyValueStore();
-        if (hasImageContent) {
-            log.info('Message contains image content. Saving to key-value store...');
-            // Extract and save each image in the message
-            for (const [index, item] of messageObj.result.content.entries()) {
-                if (item.type === 'image' && item.data) {
-                    try {
-                        // Base64 data might start with a data URL prefix, extract just the base64 part
-                        let base64Data = item.data;
-                        if (base64Data.includes(';base64,')) {
-                            base64Data = base64Data.split(';base64,')[1];
-                        }
-                        // Create a Buffer from the base64 data
-                        const imageBuffer = Buffer.from(base64Data, 'base64');
-                        const imageKey = `image-${sessionId}-${Date.now()}-${index}`;
-                        await kv.setValue(imageKey, imageBuffer, { contentType: 'image/jpeg' });
-                        log.info(`Saved image to key-value store with key: ${imageKey}`);
-                    } catch (imageError) {
-                        log.error(`Failed to process image data: ${imageError}`);
-                    }
-                }
-            }
-        }
-    } catch (error) {
-        log.error(`Error processing message content: ${error}`);
-    }
-}
-
 async function startExpressServer(port: number, config: Config) {
     const app = express();
-    const transportsSse = new Map<string, SSEServerTransport>();
     const transportsStreamable = new Map<string, StreamableHTTPServerTransport>();
     const server = await createConnection(config);
 
@@ -235,72 +191,6 @@ async function startExpressServer(port: number, config: Config) {
         }
     });
 
-    app.get('/sse', async (req: Request, res: Response) => {
-        // Browser client logic
-        // Check if the request is from a HTML browser
-        if (isHTMLBrowser(req)) {
-            serveHTMLPage(req, res);
-            return;
-        }
-
-        try {
-            log.info('MCP API (Legacy SSE)', { mth: req.method, rt: '/sse', tr: 'sse' });
-            const transport = new SSEServerTransport('/message', res);
-            transportsSse.set(transport.sessionId, transport);
-            await server.connect(transport);
-
-            const originalSend = transport.send.bind(transport);
-            transport.send = async (message) => {
-                log.info(`Sent SSE message to session ${transport.sessionId}`);
-                await Actor.pushData({ message });
-                // Process message and extract/save any image content
-                await saveImagesFromMessage(message, transport.sessionId);
-                return originalSend(message);
-            };
-
-            res.on('close', () => {
-                transportsSse.delete(transport.sessionId);
-                server.close().catch((error: Error) => log.error(`Error closing connection: ${error}`));
-            });
-        } catch (error) {
-            respondWithError(req, res, error, 'Error in GET /sse');
-        }
-    });
-
-    app.post('/message', async (req: Request, res: Response) => {
-        try {
-            log.info('MCP API (Legacy SSE)', { mth: req.method, rt: '/message', tr: 'sse' });
-            const sessionId = new URL(req.url, `http://${req.headers.host}`).searchParams.get('sessionId');
-            if (!sessionId) {
-                res.status(400).json({
-                    jsonrpc: '2.0',
-                    error: {
-                        code: -32000,
-                        message: 'Bad Request: Missing sessionId',
-                    },
-                    id: null,
-                });
-                return;
-            }
-            const transport = transportsSse.get(sessionId);
-            if (!transport) {
-                res.status(404).json({
-                    jsonrpc: '2.0',
-                    error: {
-                        code: -32000,
-                        message: 'Bad Request: Session not found',
-                    },
-                    id: null,
-                });
-                return;
-            }
-            log.info(`Received POST message for sessionId: ${sessionId}`);
-            await transport.handlePostMessage(req, res);
-        } catch (error) {
-            respondWithError(req, res, error, 'Error in POST /message');
-        }
-    });
-
     // express.json() middleware to parse JSON bodies.
     // It must be used before the POST /mcp route but after the GET /sse route
     app.use(express.json());
@@ -315,6 +205,8 @@ async function startExpressServer(port: number, config: Config) {
             if (sessionId && transportsStreamable.has(sessionId)) {
                 // Reuse existing transport
                 transport = transportsStreamable.get(sessionId)!;
+                // Handle the request with existing transport
+                await transport.handleRequest(req, res, req.body);
             } else if (!sessionId) {
                 // New initialization request
                 const eventStore = new InMemoryEventStore();
@@ -340,16 +232,32 @@ async function startExpressServer(port: number, config: Config) {
                     },
                     id: req?.body?.id,
                 });
-                return;
             }
-            // Handle the request with existing transport - no need to reconnect
-            await transport.handleRequest(req, res, req.body);
         } catch (error) {
             respondWithError(req, res, error, 'Error handling MCP request');
         }
     });
 
-    // Handle GET requests for streamable HTTP transport (using built-in support from StreamableHTTP)
+    // Reusable handler for GET and DELETE requests
+    const handleSessionRequest = async (req: Request, res: Response) => {
+        const sessionId = req.headers['mcp-session-id'] as string | undefined;
+        if (!sessionId || !transportsStreamable.has(sessionId)) {
+            res.status(400).json({
+                jsonrpc: '2.0',
+                error: {
+                    code: -32000,
+                    message: 'Bad Request: No valid session ID provided',
+                },
+                id: req?.body?.id ?? null,
+            });
+            return;
+        }
+
+        const transport = transportsStreamable.get(sessionId);
+        await transport!.handleRequest(req, res);
+    };
+
+    // Handle GET requests for server-to-client notifications via SSE
     app.get('/mcp', async (req: Request, res: Response) => {
         // Browser client logic
         // Check if the request is from a HTML browser
@@ -359,51 +267,27 @@ async function startExpressServer(port: number, config: Config) {
         }
 
         log.info('MCP API (Streamable HTTP)', { mth: req.method, rt: '/mcp', tr: 'http' });
-        const sessionId = req.headers['mcp-session-id'] as string | undefined;
-        if (!sessionId || !transportsStreamable.has(sessionId)) {
-            res.status(400).json({
-                jsonrpc: '2.0',
-                error: {
-                    code: -32000,
-                    message: 'Bad Request: No valid session ID provided',
-                },
-                id: req?.body?.id,
-            });
-            return;
-        }
 
         // Check for Last-Event-ID header for resumability
         const lastEventId = req.headers['last-event-id'] as string | undefined;
+        const sessionId = req.headers['mcp-session-id'] as string | undefined;
+
         if (lastEventId) {
-            log.error(`Client reconnecting with Last-Event-ID: ${lastEventId}`);
-        } else {
-            log.error(`Establishing new streamable HTTP connection for session ${sessionId}`);
+            log.info(`Client reconnecting with Last-Event-ID: ${lastEventId}`);
+        } else if (sessionId) {
+            log.info(`Establishing new streamable HTTP connection for session ${sessionId}`);
         }
 
-        const transport = transportsStreamable.get(sessionId);
-        await transport!.handleRequest(req, res);
+        await handleSessionRequest(req, res);
     });
 
     // Handle DELETE requests for session termination (according to MCP spec)
     app.delete('/mcp', async (req: Request, res: Response) => {
         const sessionId = req.headers['mcp-session-id'] as string | undefined;
-        if (!sessionId || !transportsStreamable.has(sessionId)) {
-            res.status(400).json({
-                jsonrpc: '2.0',
-                error: {
-                    code: -32000,
-                    message: 'Bad Request: No valid session ID provided',
-                },
-                id: req?.body?.id,
-            });
-            return;
-        }
-
-        log.error(`Received session termination request for session ${sessionId}`);
+        log.info(`Received session termination request for session ${sessionId}`);
 
         try {
-            const transport = transportsStreamable.get(sessionId);
-            await transport!.handleRequest(req, res);
+            await handleSessionRequest(req, res);
         } catch (error) {
             log.exception(error as Error, 'Error handling session termination:');
             if (!res.headersSent) {
