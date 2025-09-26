@@ -209,19 +209,19 @@ async function startExpressServer(port: number, config: Config) {
         log.info('MCP API (Streamable HTTP)', { mth: req.method, rt: '/mcp', tr: 'http' });
         log.info('MCP request body:', req.body);
         try {
-            // Check for existing session ID
             const sessionId = req.headers['mcp-session-id'] as string | undefined;
-            let transport: StreamableHTTPServerTransport;
 
+            // Case 1: Existing session -> reuse transport
             if (sessionId && transportsStreamable.has(sessionId)) {
-                // Reuse existing transport
-                transport = transportsStreamable.get(sessionId)!;
-                // Handle the request with existing transport
+                const transport = transportsStreamable.get(sessionId)!;
                 await transport.handleRequest(req, res, req.body);
-            } else if (!sessionId) {
-                // New initialization request
+                return;
+            }
+
+            // Case 2: Initialization request (no sessionId) -> create new transport
+            if (!sessionId) {
                 const eventStore = new InMemoryEventStore();
-                transport = new StreamableHTTPServerTransport({
+                const transport = new StreamableHTTPServerTransport({
                     sessionIdGenerator: () => randomUUID(),
                     eventStore, // Enable resumability
                     onsessioninitialized: (_id: string) => {
@@ -233,10 +233,11 @@ async function startExpressServer(port: number, config: Config) {
 
                 await server.connect(transport);
                 await transport.handleRequest(req, res, req.body);
-            } else {
-                // Invalid request - no session ID or not initialization request
-                respondWithBadRequest(req, res, 'Bad Request: No valid session ID provided');
+                return;
             }
+
+            // Case 3: Invalid request
+            respondWithBadRequest(req, res, 'Bad Request: No valid session ID provided');
         } catch (error) {
             respondWithServerError(req, res, error, 'Error handling MCP request');
         }
@@ -249,7 +250,7 @@ async function startExpressServer(port: number, config: Config) {
             respondWithBadRequest(req, res, 'Bad Request: No valid session ID provided');
             return;
         }
-        
+
         const transport = transportsStreamable.get(sessionId);
         await transport!.handleRequest(req, res);
     };
@@ -264,17 +265,6 @@ async function startExpressServer(port: number, config: Config) {
         }
 
         log.info('MCP API (Streamable HTTP)', { mth: req.method, rt: '/mcp', tr: 'http' });
-
-        // Check for Last-Event-ID header for resumability
-        const lastEventId = req.headers['last-event-id'] as string | undefined;
-        const sessionId = req.headers['mcp-session-id'] as string | undefined;
-
-        if (lastEventId) {
-            log.info(`Client reconnecting with Last-Event-ID: ${lastEventId}`);
-        } else if (sessionId) {
-            log.info(`Establishing new streamable HTTP connection for session ${sessionId}`);
-        }
-
         await handleSessionRequest(req, res);
     });
 
